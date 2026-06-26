@@ -11,9 +11,10 @@ import hashlib
 from datetime import datetime, timedelta
 from PIL import Image
 
-import torch
-import torch.nn.functional as F
-from torchvision import transforms, models
+# PyTorch is lazy-loaded in identify_clothing_items() to save memory
+# import torch
+# import torch.nn.functional as F
+# from torchvision import transforms, models
 
 from dotenv import load_dotenv
 from flask import (
@@ -494,6 +495,10 @@ def _load_fashion_model():
     if _FASHION_MODEL is not None:
         return _FASHION_MODEL
 
+    # Lazy import to save memory — PyTorch uses 500MB+ just to load
+    import torch
+    from torchvision import transforms, models
+
     _FASHION_TRANSFORM = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
@@ -527,6 +532,10 @@ def identify_clothing_items(image_path: str) -> list[dict]:
     For MVP: classify the whole image into fashion categories.
     """
     try:
+        # Lazy import — only load PyTorch when actually needed
+        import torch
+        import torch.nn.functional as F
+
         model = _load_fashion_model()
         transform = _FASHION_TRANSFORM
 
