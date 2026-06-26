@@ -4,3 +4,7 @@ __pycache__/
 .env
 instance/
 *.db
+
+outfithub/static/uploads/*.mp4
+*.mp4
+.env
