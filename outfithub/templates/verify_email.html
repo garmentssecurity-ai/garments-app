@@ -10,17 +10,19 @@
         </div>
 
         <div style="text-align:center; padding:16px 0;">
-            <div style="width:56px;height:56px;background:var(--accent-subtle);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:1.8rem;color:var(--accent);">&#9993;</div>
-            <p style="color:var(--text-secondary); margin-bottom:16px; font-size:0.9rem;">
-                SMTP email is not configured on this server, so here's your confirmation link:
+            <div style="width:48px;height:48px;background:var(--bg-secondary);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:1.2rem;">&#9993;</div>
+            {% if email %}
+            <p style="color:var(--text-secondary); margin-bottom:12px; font-size:0.82rem;">
+                A verification code was sent to <strong>{{ email }}</strong>.
             </p>
-            <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px; word-break:break-all; font-size:0.82rem; margin-bottom:16px; line-height:1.5;">
-                <a href="{{ confirm_url }}" style="color:var(--accent);">{{ confirm_url }}</a>
+            {% if code %}
+            <div style="background:var(--bg-secondary); border:1px solid var(--border); padding:16px; margin-bottom:16px;">
+                <p style="font-size:0.65rem;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em;">Your verification code</p>
+                <p style="font-size:2rem;font-weight:400;letter-spacing:8px;font-family:monospace;color:var(--text-primary);">{{ code }}</p>
             </div>
-            <p style="color:var(--text-muted); font-size:0.82rem;">
-                Bookmark this link or save it somewhere safe.
-            </p>
-            <a href="{{ confirm_url }}" class="btn" style="margin-top:20px;">Confirm Email Now</a>
+            <p style="color:var(--text-muted); font-size:0.72rem;">This code expires in 15 minutes.</p>
+            {% endif %}
+            {% endif %}
         </div>
 
         <div class="auth-footer">

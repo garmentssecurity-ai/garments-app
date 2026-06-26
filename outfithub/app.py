@@ -882,7 +882,7 @@ def register():
 
         # Rate limit by IP to prevent mass account creation
         client_ip = request.remote_addr or "unknown"
-        if not _rate_limit(f"register:{client_ip}", max_attempts=3, window=3600):
+        if not _rate_limit(f"register:{client_ip}", max_attempts=10, window=3600):
             flash("Too many registration attempts. Try again later.", "danger")
             return render_template("register.html", google_available=google_available)
 
@@ -907,16 +907,16 @@ def register():
             flash("Password must contain at least one uppercase letter, one lowercase letter, and one digit.", "danger")
             return render_template("register.html", google_available=google_available)
 
-        # Validate email format & check domain is real
+        # Validate email format
         try:
-            valid = validate_email(email, check_deliverability=True)
+            valid = validate_email(email)
             email = valid.normalized
         except EmailNotValidError as e:
             flash(f"Invalid email: {str(e)}", "danger")
             return render_template("register.html", google_available=google_available)
 
-        # Verify the email actually exists via SMTP RCPT (if domain supports it)
-        smtp_result = smtp_verify_email(email)
+        # Verify the email exists via SMTP (skip if SendGrid not configured)
+        smtp_result = smtp_verify_email(email) if SENDGRID_API_KEY else None
         if smtp_result is False:
             flash("Invalid email: this address does not appear to exist.", "danger")
             return render_template("register.html", google_available=google_available)
@@ -958,7 +958,15 @@ def register():
         if sent:
             flash(f"Account created! A 6-digit code was sent to {email}.", "success")
         else:
-            flash(f"Account created! Could not send email. Contact support.", "warning")
+            # If email can't be sent, auto-confirm & log the user in directly
+            user.email_confirmed = True
+            user.email_confirm_code = None
+            user.email_code_expiry = None
+            db.session.commit()
+            login_user(user)
+            rotate_csrf_token()
+            flash("Account created! You're now logged in. (Email sending not configured)", "success")
+            return redirect(url_for("index"))
 
         # Store email in session for the verify page
         session["verify_email"] = email
@@ -999,23 +1007,35 @@ def login():
             session["verify_email"] = user.email
             return redirect(url_for("verify_email_code"))
 
-        # ── Send login verification code ──────────────────────────
-        code = f"{secrets.randbelow(1000000):06d}"
-        user.login_code = code
-        user.login_code_expiry = datetime.utcnow() + timedelta(minutes=10)
-        db.session.commit()
+        # ── Login verification code (skip if email not configured) ─
+        if SENDGRID_API_KEY:
+            code = f"{secrets.randbelow(1000000):06d}"
+            user.login_code = code
+            user.login_code_expiry = datetime.utcnow() + timedelta(minutes=10)
+            db.session.commit()
 
-        sent = send_login_code(user.email, code)
-        if sent:
-            flash(f"A verification code was sent to {user.email}.", "info")
-        else:
-            flash("Could not send verification email. Check your email settings.", "danger")
-            return render_template("login.html", google_available=google_available)
+            sent = send_login_code(user.email, code)
+            if sent:
+                flash(f"A verification code was sent to {user.email}.", "info")
+                session["login_user_id"] = user.id
+                session["login_remember"] = request.form.get("remember") == "on"
+                return redirect(url_for("verify_login_code"))
+            else:
+                flash("Could not send verification email. Logging in directly.", "warning")
 
-        # Store login session data
-        session["login_user_id"] = user.id
-        session["login_remember"] = request.form.get("remember") == "on"
-        return redirect(url_for("verify_login_code"))
+        # Direct login if SendGrid not configured or sending failed
+        remember = request.form.get("remember") == "on"
+        login_user(user, remember=remember)
+        rotate_csrf_token()
+
+        # If 2FA is enabled, redirect to 2FA
+        if user.totp_enabled:
+            session["2fa_user_id"] = user.id
+            session["2fa_remember"] = remember
+            return redirect(url_for("verify_2fa_login"))
+
+        flash(f"Welcome back, {user.username}!", "success")
+        return redirect(url_for("index"))
 
     return render_template("login.html", google_available=google_available)
 
@@ -1769,7 +1789,7 @@ def verify_email_code():
 
         if is_ratelimited:
             flash("Too many verification attempts. Try again later.", "danger")
-            return render_template("verify_code.html", email=email)
+            return render_template("verify_code.html", email=email, code=user.email_confirm_code)
 
         code = request.form.get("code", "").strip()
 
@@ -1793,9 +1813,9 @@ def verify_email_code():
             return redirect(url_for("login"))
         else:
             flash("Invalid code. Please try again.", "danger")
-            return render_template("verify_code.html", email=email)
+            return render_template("verify_code.html", email=email, code=user.email_confirm_code)
 
-    return render_template("verify_code.html", email=email)
+    return render_template("verify_code.html", email=email, code=user.email_confirm_code)
 
 
 @app.route("/resend-code", methods=["POST"])

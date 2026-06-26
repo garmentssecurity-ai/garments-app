@@ -5,10 +5,15 @@
 <div class="auth-page">
     <div class="auth-card">
         <div class="auth-header">
-            <span class="brand-dot"></span>
             <h1>Verify your email</h1>
             <p>Enter the 6-digit code sent to <strong>{{ email }}</strong></p>
         </div>
+        {% if code %}
+        <div style="text-align:center; padding:12px 0; margin-bottom:16px; background:var(--bg-secondary); border:1px solid var(--border);">
+            <p style="font-size:0.65rem;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.06em;">Your code</p>
+            <p style="font-size:1.8rem;font-weight:400;letter-spacing:6px;font-family:monospace;color:var(--text-primary);">{{ code }}</p>
+        </div>
+        {% endif %}
         <form method="POST" class="auth-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="form-group">
@@ -16,18 +21,15 @@
                 <input type="text" id="code" name="code" placeholder="000000" required
                        autocomplete="one-time-code" inputmode="numeric"
                        pattern="[0-9]{6}" maxlength="6"
-                       style="font-size:1.5rem; text-align:center; letter-spacing:8px; font-weight:700;
+                       style="font-size:1.5rem; text-align:center; letter-spacing:8px; font-weight:400;
                               padding:14px 16px; background:var(--bg); border:1px solid var(--border);
-                              border-radius:var(--radius-sm); color:var(--text-primary);
-                              font-family:var(--font-sans); width:100%; outline:none;
-                              transition:border-color 0.2s;"
-                       onfocus="this.style.borderColor='var(--accent)'"
-                       onblur="this.style.borderColor='var(--border)'">
+                              color:var(--text-primary);
+                              font-family:var(--font-sans); width:100%; outline:none;">
             </div>
             <button type="submit" class="btn btn-full">Verify Email</button>
         </form>
         <div class="auth-footer" style="margin-top:16px;">
-            <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:8px;">
+            <p style="color:var(--text-muted); font-size:0.78rem; margin-bottom:8px;">
                 Didn't receive the code?
             </p>
             <form method="POST" action="{{ url_for('resend_code') }}" style="display:inline;">

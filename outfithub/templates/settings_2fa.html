@@ -73,7 +73,7 @@
                                   border-radius:var(--radius-sm); color:var(--text-primary);
                                   font-family:var(--font-sans); width:100%; outline:none;
                                   transition:border-color 0.2s;"
-                           onfocus="this.style.borderColor='var(--accent)'"
+                           onfocus="this.style.borderColor='var(--text-primary)'"
                            onblur="this.style.borderColor='var(--border)'">
                 </div>
                 <button type="submit" class="btn btn-full">Verify &amp; Enable 2FA</button>
@@ -85,7 +85,7 @@
         {% else %}
             <!-- ── 2FA is OFF, show setup button ──────── -->
             <div style="text-align:center; padding:24px 0;">
-                <div style="width:56px;height:56px;background:var(--accent-subtle);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:1.8rem;color:var(--accent);">&#9679;</div>
+                <div style="width:48px;height:48px;background:var(--bg-secondary);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:1.2rem;">&#9679;</div>
                 <p style="color:var(--text-secondary); font-size:0.9rem; line-height:1.6; margin-bottom:24px;">
                     Two-factor authentication is currently <strong>disabled</strong>.
                     Enable it to protect your account with a one-time code from your authenticator app.
