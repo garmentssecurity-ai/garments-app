@@ -69,7 +69,7 @@
                         <form method="POST" action="{{ url_for('report_post', post_id=post.id) }}" style="display:inline;">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <input type="hidden" name="reason" value="illegal">
-                            <button type="submit" class="btn btn-sm btn-ghost" style="color:var(--text-muted);font-size:0.7rem;" onclick="return confirm('Report this post for review?')">Report</button>
+                            <button type="submit" class="btn btn-sm btn-ghost" style="font-size:0.65rem;" onclick="return confirm('Report this post for review?')">Report</button>
                         </form>
                     {% endif %}
                     </div>
