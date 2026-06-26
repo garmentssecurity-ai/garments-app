@@ -323,8 +323,6 @@ class User(UserMixin, db.Model):
     login_code_expiry = db.Column(db.DateTime, nullable=True)     # When login code expires
     reset_token = db.Column(db.String(128), nullable=True)        # Password reset token
     reset_token_expiry = db.Column(db.DateTime, nullable=True)    # When reset token expires
-    failed_login_attempts = db.Column(db.Integer, default=0)       # Instagram: lockout after failed attempts
-    locked_until = db.Column(db.DateTime, nullable=True)           # Instagram: temporary lockout
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     posts = db.relationship("Post", backref="author", lazy="dynamic", cascade="all, delete-orphan")
@@ -338,25 +336,6 @@ class User(UserMixin, db.Model):
         if self.password_hash is None:
             return False
         return check_password_hash(self.password_hash, password)
-
-    def is_locked(self):
-        """Check if account is temporarily locked (Instagram-style)."""
-        if self.locked_until and datetime.utcnow() < self.locked_until:
-            return True
-        # Reset if lockout expired
-        if self.locked_until and datetime.utcnow() >= self.locked_until:
-            self.failed_login_attempts = 0
-            self.locked_until = None
-        return False
-
-    def record_failed_login(self):
-        """Instagram: progressive lockout - 5, 10, 30, 60 minutes."""
-        self.failed_login_attempts = (self.failed_login_attempts or 0) + 1
-        attempts = self.failed_login_attempts
-        if attempts >= 5:
-            lockout_minutes = min(60 * (attempts // 5), 480)  # up to 8 hours
-            self.locked_until = datetime.utcnow() + timedelta(minutes=lockout_minutes)
-        return self.failed_login_attempts
 
 
 class Post(db.Model):
@@ -944,18 +923,10 @@ def register():
             flash("Password must contain at least one uppercase letter, one lowercase letter, and one digit.", "danger")
             return render_template("register.html", google_available=google_available)
 
-        # Validate email format
-        try:
-            valid = validate_email(email)
-            email = valid.normalized
-        except EmailNotValidError as e:
-            flash(f"Invalid email: {str(e)}", "danger")
-            return render_template("register.html", google_available=google_available)
-
-        # Verify the email exists via SMTP (skip if SendGrid not configured)
-        smtp_result = smtp_verify_email(email) if SENDGRID_API_KEY else None
-        if smtp_result is False:
-            flash("Invalid email: this address does not appear to exist.", "danger")
+        # Validate email format (check structure only, not deliverability)
+        # Instagram/real apps don't verify email existence at signup
+        if "@" not in email or "." not in email.split("@")[1]:
+            flash("Please enter a valid email address.", "danger")
             return render_template("register.html", google_available=google_available)
 
         if not re.match(r"^[a-zA-Z0-9_]+$", username):
@@ -982,32 +953,33 @@ def register():
 
         user = User(username=username, email=email)
         user.set_password(password)
-        # Generate 6-digit verification code
-        code = f"{secrets.randbelow(1000000):06d}"
-        user.email_confirm_code = code
-        user.email_code_expiry = datetime.utcnow() + timedelta(minutes=15)
-        user.email_confirmed = False
         db.session.add(user)
         db.session.commit()
 
-        # Send the code
-        sent = send_verification_code(email, code)
-        if sent:
-            flash(f"Account created! A 6-digit code was sent to {email}.", "success")
-        else:
-            # If email can't be sent, auto-confirm & log the user in directly
-            user.email_confirmed = True
-            user.email_confirm_code = None
-            user.email_code_expiry = None
+        # Try to send verification email if SendGrid is configured
+        if SENDGRID_API_KEY:
+            code = f"{secrets.randbelow(1000000):06d}"
+            user.email_confirm_code = code
+            user.email_code_expiry = datetime.utcnow() + timedelta(minutes=15)
+            user.email_confirmed = False
             db.session.commit()
-            login_user(user)
-            rotate_csrf_token()
-            flash("Account created! You're now logged in. (Email sending not configured)", "success")
-            return redirect(url_for("index"))
 
-        # Store email in session for the verify page
-        session["verify_email"] = email
-        return redirect(url_for("verify_email_code"))
+            sent = send_verification_code(email, code)
+            if sent:
+                flash(f"Account created! A 6-digit code was sent to {email}. Check your inbox.", "success")
+                session["verify_email"] = email
+                return redirect(url_for("verify_email_code"))
+            else:
+                flash("Account created but couldn't send verification email. You can still log in.", "warning")
+        else:
+            flash("Account created! You can now log in.", "success")
+
+        # If email isn't configured or sending failed, allow login directly
+        user.email_confirmed = True
+        db.session.commit()
+        login_user(user)
+        rotate_csrf_token()
+        return redirect(url_for("index"))
 
     return render_template("register.html", google_available=google_available)
 
@@ -1034,55 +1006,18 @@ def login():
         user = User.query.filter_by(username=login_id).first()
         if user is None and "@" in login_id:
             user = User.query.filter_by(email=login_id).first()
-        if user is None:
+
+        if user is None or not user.check_password(password):
+            # Generic error to prevent username enumeration
             flash("Invalid username or password.", "danger")
             return render_template("login.html", google_available=google_available)
 
-        # Instagram: check account lockout
-        if user.is_locked():
-            remaining = (user.locked_until - datetime.utcnow()).seconds // 60
-            flash(f"Account temporarily locked. Try again in {remaining} minutes.", "danger")
-            return render_template("login.html", google_available=google_available)
-
-        if not user.check_password(password):
-            user.record_failed_login()
-            db.session.commit()
-            flash("Invalid username or password.", "danger")
-            return render_template("login.html", google_available=google_available)
-
-        # Reset failed attempts on successful login
-        user.failed_login_attempts = 0
-        user.locked_until = None
-        db.session.commit()
-
-        # Block login if email not confirmed (skip for OAuth users)
-        if not user.email_confirmed and not user.oauth_provider:
-            flash("Please verify your email before logging in. A code was sent to your email.", "warning")
-            session["verify_email"] = user.email
-            return redirect(url_for("verify_email_code"))
-
-        # ── Login verification code (skip if email not configured) ─
-        if SENDGRID_API_KEY:
-            code = f"{secrets.randbelow(1000000):06d}"
-            user.login_code = code
-            user.login_code_expiry = datetime.utcnow() + timedelta(minutes=10)
-            db.session.commit()
-
-            sent = send_login_code(user.email, code)
-            if sent:
-                flash(f"A verification code was sent to {user.email}.", "info")
-                session["login_user_id"] = user.id
-                session["login_remember"] = request.form.get("remember") == "on"
-                return redirect(url_for("verify_login_code"))
-            else:
-                flash("Could not send verification email. Logging in directly.", "warning")
-
-        # Direct login if SendGrid not configured or sending failed
+        # Log the user in directly (like Instagram: username/password is enough)
         remember = request.form.get("remember") == "on"
         login_user(user, remember=remember)
         rotate_csrf_token()
 
-        # If 2FA is enabled, redirect to 2FA
+        # If 2FA is enabled, redirect to 2FA page
         if user.totp_enabled:
             session["2fa_user_id"] = user.id
             session["2fa_remember"] = remember
@@ -1990,12 +1925,10 @@ def initialize_app():
     with app.app_context():
         db.create_all()
         # Add new columns for existing databases (safe if columns already exist)
-        for col in ["login_code", "login_code_expiry", "reset_token", "reset_token_expiry",
-                     "failed_login_attempts", "locked_until"]:
+        for col in ["login_code", "login_code_expiry", "reset_token", "reset_token_expiry"]:
             try:
                 with db.engine.connect() as conn:
-                    col_type = "INTEGER" if col in ["failed_login_attempts"] else "DATETIME" if col in ["locked_until"] else "VARCHAR(128)"
-                    conn.execute(db.text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
+                    conn.execute(db.text(f"ALTER TABLE users ADD COLUMN {col} VARCHAR(128)"))
                     conn.commit()
             except Exception:
                 pass
