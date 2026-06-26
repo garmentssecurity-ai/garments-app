@@ -1,0 +1,25 @@
+<a href="{{ url_for('view_outfit', post_id=post.id) }}" class="outfit-card" id="post-{{ post.id }}">
+    <div class="outfit-card-image">
+        {% if post.is_video %}
+            <div class="video-thumb-wrap">
+                <video src="{{ url_for('uploaded_file', filename=post.image_filename) }}" muted preload="metadata" loading="lazy"></video>
+                <div class="video-play-overlay">&#9654;</div>
+            </div>
+        {% else %}
+            <img src="{{ url_for('uploaded_file', filename=post.image_filename) }}" alt="{{ post.title }}" loading="lazy">
+        {% endif %}
+        {% if post.rating_count > 0 %}
+            <div class="outfit-card-rating">
+                <span class="stars">{{ '&#9733;' * post.average_rating|int }}{{ '&#9734;' * (5 - post.average_rating|int) }}</span>
+                <span class="rating-num">{{ post.average_rating }}</span>
+            </div>
+        {% endif %}
+    </div>
+    <div class="outfit-card-body">
+        <h3 class="outfit-card-title">{{ post.title }}</h3>
+        <div class="outfit-card-meta">
+            <span class="outfit-card-author">@{{ post.author.username }}</span>
+            <span class="outfit-card-date">{{ post.created_at.strftime('%b %d') }}</span>
+        </div>
+    </div>
+</a>

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ profile_user.username }} — garments{% endblock %}
+
+{% block content %}
+<div class="profile-page">
+    <div class="profile-header">
+        <div class="profile-avatar-large">{{ profile_user.username[0]|upper }}</div>
+        <div class="profile-info">
+            <h1>{{ profile_user.username }}</h1>
+            {% if profile_user.bio %}
+                <p class="profile-bio">{{ profile_user.bio }}</p>
+            {% endif %}
+            <div class="profile-stats">
+                <div class="stat">
+                    <strong>{{ posts|length }}</strong>
+                    <span>Outfits</span>
+                </div>
+                <div class="stat">
+                    <strong>{{ profile_user.ratings.count() }}</strong>
+                    <span>Ratings</span>
+                </div>
+            </div>
+            <p class="profile-joined">Joined {{ profile_user.created_at.strftime('%B %Y') }}</p>
+        </div>
+    </div>
+
+    <div class="profile-content">
+        <h2>{{ profile_user.username }}'s outfits</h2>
+        {% if posts %}
+            <div class="outfit-grid">
+                {% for post in posts %}
+                    <a href="{{ url_for('view_outfit', post_id=post.id) }}" class="outfit-card" id="post-{{ post.id }}">
+                        <div class="outfit-card-image">
+                            {% if post.is_video %}
+                                <div class="video-thumb-wrap">
+                                    <video src="{{ url_for('uploaded_file', filename=post.image_filename) }}" muted preload="metadata" loading="lazy"></video>
+                                    <div class="video-play-overlay">&#9654;</div>
+                                </div>
+                            {% else %}
+                                <img src="{{ url_for('uploaded_file', filename=post.image_filename) }}" alt="{{ post.title }}" loading="lazy">
+                            {% endif %}
+                            {% if post.rating_count > 0 %}
+                                <div class="outfit-card-rating">
+                                    <span class="stars">{{ '&#9733;' * post.average_rating|int }}{{ '&#9734;' * (5 - post.average_rating|int) }}</span>
+                                    <span class="rating-num">{{ post.average_rating }}</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="outfit-card-body">
+                            <h3 class="outfit-card-title">{{ post.title }}</h3>
+                            <div class="outfit-card-meta">
+                                <span class="outfit-card-date">{{ post.created_at.strftime('%b %d, %Y') }}</span>
+                            </div>
+                        </div>
+                    </a>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-icon">&#9679;</div>
+                <h3>No outfits yet</h3>
+                <p>No outfits posted yet.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

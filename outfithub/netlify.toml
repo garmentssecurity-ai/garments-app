@@ -1,0 +1,26 @@
+# netlify.toml — garments deployment configuration
+# For a Flask app, you'll need to use Netlify Functions + API gateway,
+# or better yet, deploy the full app on Render/Railway.
+
+[build]
+  command = "pip install -r requirements.txt"
+  functions = "netlify/functions"
+  publish = "static"
+
+# Site name — set this to keep your URL consistent
+# After first deploy, go to Site Settings > General > Change site name
+# Or set it here (for new sites):
+# [template]
+#   name = "outfithub"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/garments-api"
+  status = 200

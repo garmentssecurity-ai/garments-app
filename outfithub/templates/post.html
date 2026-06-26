@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Post Your Look — garments{% endblock %}
+
+{% block content %}
+<div class="post-page">
+    <div class="post-card">
+        <div class="post-header">
+            <h1>Post your look</h1>
+            <p>Share a photo or video of your outfit. AI identifies clothing items in photos and finds the best deals.</p>
+        </div>
+        <form method="POST" enctype="multipart/form-data" class="post-form">
+            <div class="form-group">
+                <label for="title">Title</label>
+                <input type="text" id="title" name="title" placeholder="e.g. Saturday casual look" required maxlength="200">
+            </div>
+            <div class="form-group">
+                <label for="description">Description <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span></label>
+                <textarea id="description" name="description" placeholder="Tell us about your outfit — brand, inspiration, occasion..." rows="3"></textarea>
+            </div>
+            <div class="media-type-toggle">
+                <button type="button" class="media-type-btn active" id="photoTab" data-type="photo">Photo</button>
+                <button type="button" class="media-type-btn" id="videoTab" data-type="video">Video</button>
+            </div>
+            <div class="form-group upload-group">
+                <label for="media">Upload</label>
+                <div class="upload-zone" id="uploadZone">
+                    <div class="upload-placeholder" id="uploadPlaceholder">
+                        <div class="upload-icon">&#9679;</div>
+                        <p class="upload-text" id="uploadText">Click to upload or drag &amp; drop</p>
+                        <p class="upload-hint" id="uploadHint">PNG, JPG, GIF, WebP &mdash; max 200MB</p>
+                    </div>
+                    <div class="upload-preview" id="uploadPreview" style="display:none;">
+                        <img id="previewImage" alt="Preview" style="display:none;">
+                        <video id="previewVideo" controls style="display:none; max-height:300px; border-radius:8px; margin-bottom:12px;"></video>
+                        <button type="button" class="btn btn-sm" id="changeImageBtn">Change</button>
+                    </div>
+                    <input type="file" id="media" name="media" accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/quicktime,video/x-msvideo,video/webm,video/x-matroska" required style="display:none;">
+                </div>
+            </div>
+            <div class="post-actions">
+                <a href="{{ url_for('index') }}" class="btn btn-ghost">Cancel</a>
+                <button type="submit" class="btn btn-lg">Post Outfit</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const fileInput = document.getElementById('media');
+    const uploadZone = document.getElementById('uploadZone');
+    const uploadPlaceholder = document.getElementById('uploadPlaceholder');
+    const uploadPreview = document.getElementById('uploadPreview');
+    const previewImage = document.getElementById('previewImage');
+    const previewVideo = document.getElementById('previewVideo');
+    const uploadText = document.getElementById('uploadText');
+    const uploadHint = document.getElementById('uploadHint');
+    const photoTab = document.getElementById('photoTab');
+    const videoTab = document.getElementById('videoTab');
+
+    let selectedType = 'photo';
+
+    photoTab.addEventListener('click', () => switchMode('photo'));
+    videoTab.addEventListener('click', () => switchMode('video'));
+
+    function switchMode(mode) {
+        selectedType = mode;
+        photoTab.classList.toggle('active', mode === 'photo');
+        videoTab.classList.toggle('active', mode === 'video');
+        if (mode === 'photo') {
+            fileInput.accept = 'image/png,image/jpeg,image/gif,image/webp';
+            uploadText.textContent = 'Click to upload or drag & drop';
+            uploadHint.textContent = 'PNG, JPG, GIF, WebP \u2014 max 200MB';
+        } else {
+            fileInput.accept = 'video/mp4,video/quicktime,video/x-msvideo,video/webm,video/x-matroska';
+            uploadText.textContent = 'Click to upload or drag & drop a video';
+            uploadHint.textContent = 'MP4, MOV, AVI, WebM, MKV \u2014 max 200MB';
+        }
+        fileInput.value = '';
+        uploadPlaceholder.style.display = 'flex';
+        uploadPreview.style.display = 'none';
+    }
+
+    uploadZone.addEventListener('click', () => fileInput.click());
+
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.style.borderColor = 'var(--accent)';
+        uploadZone.style.background = 'var(--accent-subtle)';
+    });
+
+    uploadZone.addEventListener('dragleave', () => {
+        uploadZone.style.borderColor = 'var(--border)';
+        uploadZone.style.background = 'transparent';
+    });
+
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.style.borderColor = 'var(--border)';
+        uploadZone.style.background = 'transparent';
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            showPreview(e.dataTransfer.files[0]);
+        }
+    });
+
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) {
+            showPreview(fileInput.files[0]);
+        }
+    });
+
+    function showPreview(file) {
+        const isVideo = file.type.startsWith('video/');
+        previewImage.style.display = isVideo ? 'none' : 'block';
+        previewVideo.style.display = isVideo ? 'block' : 'none';
+
+        if (isVideo) {
+            previewVideo.src = URL.createObjectURL(file);
+            previewVideo.load();
+        } else {
+            const reader = new FileReader();
+            reader.onload = (e) => { previewImage.src = e.target.result; };
+            reader.readAsDataURL(file);
+        }
+        uploadPlaceholder.style.display = 'none';
+        uploadPreview.style.display = 'block';
+    }
+
+    document.getElementById('changeImageBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        fileInput.value = '';
+        if (previewVideo.src) URL.revokeObjectURL(previewVideo.src);
+        uploadPlaceholder.style.display = 'flex';
+        uploadPreview.style.display = 'none';
+        fileInput.click();
+    });
+</script>
+{% endblock %}

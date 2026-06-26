@@ -1,0 +1,19 @@
+# render.yaml — garments deployment configuration for Render
+# This gives you a consistent *.onrender.com URL that never changes
+services:
+  - type: web
+    name: outfithub
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: BASE_URL
+        value: https://outfithub.onrender.com
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    disk:
+      name: uploads
+      mountPath: /opt/render/project/src/static/uploads
+      sizeGB: 1

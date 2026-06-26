@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title %}{{ post.title }} — garments{% endblock %}
+
+{% block content %}
+<div class="outfit-detail">
+    <div class="outfit-detail-grid">
+        <!-- Media Section -->
+        <div class="outfit-image-section">
+            {% if post.is_video %}
+                <video src="{{ url_for('uploaded_file', filename=post.image_filename) }}" controls class="outfit-main-video"></video>
+            {% else %}
+                <img src="{{ url_for('uploaded_file', filename=post.image_filename) }}" alt="{{ post.title }}" class="outfit-main-image">
+            {% endif %}
+        </div>
+
+        <!-- Info Section -->
+        <div class="outfit-info-section">
+            <div class="outfit-info-header">
+                <h1>{{ post.title }}</h1>
+                <a href="{{ url_for('profile', username=post.author.username) }}" class="outfit-author">
+                    <span class="avatar-sm">{{ post.author.username[0]|upper }}</span>
+                    <span>@{{ post.author.username }}</span>
+                </a>
+                <p class="outfit-date">{{ post.created_at.strftime('%B %d, %Y') }}</p>
+            </div>
+
+            {% if post.description %}
+                <div class="outfit-description">
+                    <p>{{ post.description }}</p>
+                </div>
+            {% endif %}
+
+            <!-- Rating -->
+            <div class="outfit-rating-section">
+                <h3>Rate this outfit</h3>
+                <div class="star-rating" data-post-id="{{ post.id }}">
+                    {% for i in range(5, 0, -1) %}
+                        <button class="star-btn" data-score="{{ i }}" title="{{ i }} star{{ 's' if i > 1 }}">&#9733;</button>
+                    {% endfor %}
+                </div>
+                <div class="rating-stats">
+                    <span class="average-rating">
+                        <span class="stars-lg">{{ '&#9733;' * post.average_rating|int }}{{ '&#9734;' * (5 - post.average_rating|int) }}</span>
+                        <strong>{{ post.average_rating }}</strong>
+                    </span>
+                    <span class="rating-count">({{ post.rating_count }} rating{{ 's' if post.rating_count != 1 }})</span>
+                </div>
+                {% if current_user.is_authenticated and current_user.id == post.user_id %}
+                    <form method="POST" action="{{ url_for('delete_post', post_id=post.id) }}" class="delete-form" onsubmit="return confirm('Delete this outfit?')">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                    </form>
+                {% endif %}
+            </div>
+
+            <!-- AI Identified Items -->
+            {% if items %}
+            <div class="outfit-items-section">
+                <div class="section-header">
+                    <h3>AI-Identified Items</h3>
+                    <div style="display:flex;gap:6px;">
+                    {% if current_user.is_authenticated and current_user.id == post.user_id %}
+                        <form method="POST" action="{{ url_for('ai_rescan', post_id=post.id) }}" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn btn-sm btn-outline">Re-scan</button>
+                        </form>
+                    {% endif %}
+                    {% if current_user.is_authenticated %}
+                        <form method="POST" action="{{ url_for('report_post', post_id=post.id) }}" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="reason" value="illegal">
+                            <button type="submit" class="btn btn-sm btn-ghost" style="color:var(--text-muted);font-size:0.7rem;" onclick="return confirm('Report this post for review?')">Report</button>
+                        </form>
+                    {% endif %}
+                    </div>
+                </div>
+                <div class="items-list">
+                    {% for item in items %}
+                    <div class="item-card">
+                        <div class="item-header">
+                            <span class="item-category-badge">{{ item.category }}</span>
+                            <span class="item-confidence">{{ (item.confidence * 100)|int }}% match</span>
+                        </div>
+                        <p class="item-label">{{ item.label }}</p>
+                        {% set deals = item.deals.all() %}
+                        {% if deals %}
+                        <div class="item-deals">
+                            <h4>Best Deals</h4>
+                            <div class="deals-list">
+                                {% for deal in deals %}
+                                <a href="{{ deal.url }}" target="_blank" rel="noopener" class="deal-link">
+                                    <span class="deal-website">{{ deal.website }}</span>
+                                    <span class="deal-title">{{ deal.title }}</span>
+                                    <span class="deal-price">${{ "%.2f"|format(deal.price) }}</span>
+                                </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Comments -->
+            <div class="outfit-comments-section">
+                <h3>Comments ({{ post.comments.count() }})</h3>
+                {% if current_user.is_authenticated %}
+                <form method="POST" action="{{ url_for('add_comment', post_id=post.id) }}" class="comment-form">
+                    <textarea name="body" placeholder="Share your thoughts on this outfit..." rows="2" required></textarea>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-sm">Comment</button>
+                </form>
+                {% else %}
+                <p class="login-prompt"><a href="{{ url_for('login') }}">Log in</a> to leave a comment.</p>
+                {% endif %}
+
+                <div class="comments-list">
+                    {% for comment in root_comments %}
+                    <div class="comment-card" id="comment-{{ comment.id }}">
+                        <div class="comment-header">
+                            <span class="comment-author">@{{ comment.user.username }}</span>
+                            <span class="comment-date">{{ comment.created_at.strftime('%b %d, %Y') }}</span>
+                        </div>
+                        <p class="comment-body">{{ comment.body }}</p>
+
+                        <!-- Reply button -->
+                        {% if current_user.is_authenticated %}
+                        <div style="display:flex;gap:6px;margin-top:8px;">
+                        <button class="reply-toggle btn btn-sm btn-ghost" data-comment-id="{{ comment.id }}">&#8617; Reply</button>
+                        <form method="POST" action="{{ url_for('report_comment', comment_id=comment.id) }}" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="reason" value="illegal">
+                            <button type="submit" class="btn btn-sm btn-ghost" style="color:var(--danger);font-size:0.7rem;padding:4px 8px;" onclick="return confirm('Report this comment for review?')">Report</button>
+                        </form>
+                        </div>
+
+                        <!-- Inline reply form -->
+                        <form method="POST" action="{{ url_for('add_comment', post_id=post.id) }}" class="comment-form reply-form" id="reply-form-{{ comment.id }}" style="display:none; margin-top: 10px;">
+                            <input type="hidden" name="parent_id" value="{{ comment.id }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <textarea name="body" placeholder="Write a reply..." rows="1" required></textarea>
+                            <button type="submit" class="btn btn-sm">Reply</button>
+                        </form>
+                        {% endif %}
+
+                        <!-- Replies -->
+                        {% set replies = comment.replies|sort(attribute='created_at') %}
+                        {% if replies %}
+                        <div class="replies-list">
+                            {% for reply in replies %}
+                            <div class="reply-card" id="comment-{{ reply.id }}">
+                                <div class="comment-header">
+                                    <span class="comment-author">@{{ reply.user.username }}</span>
+                                    <span class="comment-date">{{ reply.created_at.strftime('%b %d, %Y') }}</span>
+                                </div>
+                                <p class="comment-body">{{ reply.body }}</p>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <p class="no-comments">No comments yet. Be the first!</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // ── Star rating via AJAX ──────────────────────────────────────
+    document.querySelectorAll('.star-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const postId = this.closest('.star-rating').dataset.postId;
+            const score = this.dataset.score;
+
+            {% if not current_user.is_authenticated %}
+                window.location.href = "{{ url_for('login') }}";
+                return;
+            {% endif %}
+
+            try {
+                const resp = await fetch(`/outfit/${postId}/rate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({ score: parseInt(score) })
+                });
+                const data = await resp.json();
+
+                const section = this.closest('.outfit-rating-section');
+                const starsLg = section.querySelector('.stars-lg');
+                const avgRating = section.querySelector('.average-rating strong');
+                const ratingCount = section.querySelector('.rating-count');
+
+                starsLg.innerHTML = '&#9733;'.repeat(Math.round(data.average)) + '&#9734;'.repeat(5 - Math.round(data.average));
+                avgRating.textContent = data.average;
+                ratingCount.textContent = `(${data.count} rating${data.count !== 1 ? 's' : ''})`;
+
+                section.querySelectorAll('.star-btn').forEach(b => {
+                    b.classList.toggle('active', parseInt(b.dataset.score) <= data.user_score);
+                });
+            } catch (e) {
+                console.error('Rating failed', e);
+            }
+        });
+    });
+
+    {% if user_rating %}
+    document.querySelectorAll('.star-btn').forEach(btn => {
+        if (parseInt(btn.dataset.score) <= {{ user_rating }}) {
+            btn.classList.add('active');
+        }
+    });
+    {% endif %}
+
+    // ── Reply toggle ─────────────────────────────────────────────
+    document.querySelectorAll('.reply-toggle').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const commentId = this.dataset.commentId;
+            const form = document.getElementById(`reply-form-${commentId}`);
+            if (form) {
+                form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+                if (form.style.display === 'flex') {
+                    form.querySelector('textarea').focus();
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

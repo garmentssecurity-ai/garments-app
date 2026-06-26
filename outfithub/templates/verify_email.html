@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Verify Email — garments{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-header">
+            <span class="brand-dot"></span>
+            <h1>Verify your email</h1>
+            <p>You're almost there! Confirm your email address to start using garments.</p>
+        </div>
+
+        <div style="text-align:center; padding:16px 0;">
+            <div style="width:56px;height:56px;background:var(--accent-subtle);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:1.8rem;color:var(--accent);">&#9993;</div>
+            <p style="color:var(--text-secondary); margin-bottom:16px; font-size:0.9rem;">
+                SMTP email is not configured on this server, so here's your confirmation link:
+            </p>
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px; word-break:break-all; font-size:0.82rem; margin-bottom:16px; line-height:1.5;">
+                <a href="{{ confirm_url }}" style="color:var(--accent);">{{ confirm_url }}</a>
+            </div>
+            <p style="color:var(--text-muted); font-size:0.82rem;">
+                Bookmark this link or save it somewhere safe.
+            </p>
+            <a href="{{ confirm_url }}" class="btn" style="margin-top:20px;">Confirm Email Now</a>
+        </div>
+
+        <div class="auth-footer">
+            <a href="{{ url_for('login') }}">Back to login</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Verify 2FA — garments{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-header">
+            <span class="brand-dot"></span>
+            <h1>Two-factor authentication</h1>
+            <p>Enter the 6-digit code from your authenticator app</p>
+        </div>
+        <form method="POST" class="auth-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="form-group">
+                <label for="code">Authentication Code</label>
+                <input type="text" id="code" name="code" placeholder="000000" required
+                       autocomplete="one-time-code" inputmode="numeric"
+                       pattern="[0-9]{6}" maxlength="6"
+                       style="font-size:1.5rem; text-align:center; letter-spacing:8px; font-weight:700;
+                              padding:14px 16px; background:var(--bg); border:1px solid var(--border);
+                              border-radius:var(--radius-sm); color:var(--text-primary);
+                              font-family:var(--font-sans); width:100%; outline:none;
+                              transition:border-color 0.2s;"
+                       onfocus="this.style.borderColor='var(--accent)'"
+                       onblur="this.style.borderColor='var(--border)'">
+            </div>
+            <button type="submit" class="btn btn-full">Verify</button>
+        </form>
+        <div class="auth-footer">
+            <a href="{{ url_for('login') }}">Back to login</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

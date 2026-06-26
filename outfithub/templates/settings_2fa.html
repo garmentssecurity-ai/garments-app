@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}2FA Settings — garments{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-header">
+            <span class="brand-dot"></span>
+            <h1>Two-factor authentication</h1>
+            <p>Add an extra layer of security to your account</p>
+        </div>
+
+        {% if totp_enabled %}
+            <!-- ── 2FA is ON ──────────────────────────── -->
+            <div style="text-align:center; padding:20px 0;">
+                <div style="width:56px;height:56px;background:rgba(34,197,94,0.12);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:1.8rem;">&#10003;</div>
+                <p style="color:var(--success); font-weight:600; font-size:1rem;">
+                    Two-factor authentication is <strong>active</strong>.
+                </p>
+                <p style="color:var(--text-muted); font-size:0.85rem; margin-top:6px;">
+                    You'll need a code from your authenticator app each time you log in.
+                </p>
+            </div>
+            <form method="POST" action="{{ url_for('settings_2fa') }}" class="auth-form"
+                  onsubmit="return confirm('Disable two-factor authentication? You will lose this protection.')">
+                <input type="hidden" name="action" value="disable">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="form-group">
+                    <label for="totp_code">Current 2FA code</label>
+                    <input type="text" id="totp_code" name="totp_code" placeholder="000000" required
+                           autocomplete="off" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                           style="font-size:1.3rem; text-align:center; letter-spacing:6px; font-weight:700;
+                                  padding:12px 16px; background:var(--bg); border:1px solid var(--border);
+                                  border-radius:var(--radius-sm); color:var(--text-primary);
+                                  font-family:var(--font-sans); width:100%; outline:none;">
+                </div>
+                <div style="border-top:1px solid var(--border); margin:16px 0; padding-top:16px;">
+                    <p style="color:var(--text-muted); font-size:0.78rem; text-align:center; margin-bottom:12px;">Verify your identity to disable 2FA</p>
+                    <div class="form-group">
+                        <label for="password">Current password</label>
+                        <input type="password" id="password" name="password"
+                               placeholder="Your current password" autocomplete="current-password">
+                    </div>
+                    <p style="color:var(--text-muted); font-size:0.78rem; text-align:center; margin:-8px 0 12px;">or</p>
+                    <div class="form-group">
+                        <label for="email_confirm">Confirm your email</label>
+                        <input type="email" id="email_confirm" name="email_confirm"
+                               placeholder="your@email.com" autocomplete="email">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-full btn-danger">Disable 2FA</button>
+            </form>
+
+        {% elif qr_data %}
+            <!-- ── Step 2: Scan QR & verify ───────────── -->
+            <div style="text-align:center; padding:16px 0;">
+                <p style="margin-bottom:16px; color:var(--text-secondary); font-size:0.9rem; line-height:1.5;">
+                    Scan this QR code with your authenticator app<br>
+                    <span style="color:var(--text-muted); font-size:0.82rem;">(Google Authenticator, Authy, etc.)</span>
+                </p>
+                <img src="data:image/png;base64,{{ qr_data }}" alt="QR Code"
+                     style="border-radius:var(--radius); border:3px solid var(--bg); max-width:200px; width:100%; box-shadow:var(--shadow);">
+            </div>
+            <form method="POST" action="{{ url_for('settings_2fa') }}" class="auth-form">
+                <input type="hidden" name="action" value="verify">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="form-group">
+                    <label for="code">Enter the 6-digit code from the app</label>
+                    <input type="text" id="code" name="code" placeholder="000000" required
+                           autocomplete="off" inputmode="numeric"
+                           pattern="[0-9]{6}" maxlength="6"
+                           style="font-size:1.5rem; text-align:center; letter-spacing:8px; font-weight:700;
+                                  padding:14px 16px; background:var(--bg); border:1px solid var(--border);
+                                  border-radius:var(--radius-sm); color:var(--text-primary);
+                                  font-family:var(--font-sans); width:100%; outline:none;
+                                  transition:border-color 0.2s;"
+                           onfocus="this.style.borderColor='var(--accent)'"
+                           onblur="this.style.borderColor='var(--border)'">
+                </div>
+                <button type="submit" class="btn btn-full">Verify &amp; Enable 2FA</button>
+            </form>
+            <div class="auth-footer">
+                <a href="{{ url_for('settings_2fa') }}" style="font-size:0.85rem;">Cancel setup</a>
+            </div>
+
+        {% else %}
+            <!-- ── 2FA is OFF, show setup button ──────── -->
+            <div style="text-align:center; padding:24px 0;">
+                <div style="width:56px;height:56px;background:var(--accent-subtle);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:1.8rem;color:var(--accent);">&#9679;</div>
+                <p style="color:var(--text-secondary); font-size:0.9rem; line-height:1.6; margin-bottom:24px;">
+                    Two-factor authentication is currently <strong>disabled</strong>.
+                    Enable it to protect your account with a one-time code from your authenticator app.
+                </p>
+            </div>
+            <form method="POST" action="{{ url_for('settings_2fa') }}" class="auth-form">
+                <input type="hidden" name="action" value="setup">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-full">Enable 2FA</button>
+            </form>
+        {% endif %}
+
+        <div class="auth-footer">
+            <a href="{{ url_for('index') }}">Back to home</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

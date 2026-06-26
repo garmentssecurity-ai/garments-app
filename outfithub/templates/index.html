@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}garments — Discover Fashion{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <div class="hero-content">
+        <h1>Discover &amp; Rate <span class="gradient-text">Outfits</span></h1>
+        <p>Post your style, get community feedback, and let AI find the best deals on every piece.</p>
+        {% if not current_user.is_authenticated %}
+            <a href="{{ url_for('register') }}" class="btn btn-lg">Join garments</a>
+        {% else %}
+            <a href="{{ url_for('new_post') }}" class="btn">Post your look</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="feed-header">
+    <h2>Latest Outfits</h2>
+    <div class="feed-count" id="feedCount">{{ posts.total }} looks</div>
+</div>
+
+{% if posts.items %}
+    <div class="outfit-grid" id="outfitGrid">
+        {% for post in posts.items %}
+            {% include "_outfit_card.html" %}
+        {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    {% if posts.pages > 1 %}
+    <div class="pagination" id="pagination">
+        {% if posts.has_prev %}
+            <a href="{{ url_for('index', page=posts.prev_num) }}" class="page-link">&larr; Previous</a>
+        {% endif %}
+        <span class="page-info">{{ posts.page }} / {{ posts.pages }}</span>
+        {% if posts.has_next %}
+            <a href="{{ url_for('index', page=posts.next_num) }}" class="page-link">Next &rarr;</a>
+        {% endif %}
+    </div>
+    {% endif %}
+{% else %}
+    <div class="empty-state" id="emptyState">
+        <div class="empty-icon">&#9679;</div>
+        <h3>No outfits yet</h3>
+        <p>Be the first to share your style!</p>
+        {% if current_user.is_authenticated %}
+            <a href="{{ url_for('new_post') }}" class="btn">Post Your Outfit</a>
+        {% else %}
+            <a href="{{ url_for('register') }}" class="btn">Join garments</a>
+        {% endif %}
+    </div>
+{% endif %}
+
+<!-- Real-time new-post indicator -->
+<div id="newPostBanner" class="new-post-banner" style="display:none;">
+    <button onclick="scrollToTop(); fetchNewPosts()">New outfits posted &mdash; Click to see!</button>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // ── Real-time feed poll ──────────────────────────────────────────
+    let lastPostTime = "{{ posts.items[0].created_at.isoformat() if posts.items else '1970-01-01T00:00:00' }}";
+    let pollInterval = 8000;
+    let isFetching = false;
+
+    async function fetchNewPosts() {
+        if (isFetching) return;
+        isFetching = true;
+
+        try {
+            const resp = await fetch(`/api/feed/latest?since=${encodeURIComponent(lastPostTime)}`);
+            const newPosts = await resp.json();
+
+            if (newPosts.length > 0) {
+                const grid = document.getElementById('outfitGrid');
+                const emptyState = document.getElementById('emptyState');
+                const banner = document.getElementById('newPostBanner');
+                let count = 0;
+
+                for (const post of newPosts) {
+                    if (document.getElementById(`post-${post.id}`)) continue;
+
+                    const card = document.createElement('a');
+                    card.href = post.url;
+                    card.className = 'outfit-card new-card';
+                    card.id = `post-${post.id}`;
+                    const mediaHtml = post.is_video
+                        ? `<div class="video-thumb-wrap"><video src="${post.media_url}" muted preload="metadata"></video><div class="video-play-overlay">&#9654;</div></div>`
+                        : `<img src="${post.media_url}" alt="${post.title}" loading="lazy">`;
+                    card.innerHTML = `
+                        <div class="outfit-card-image">
+                            ${mediaHtml}
+                            ${post.rating_count > 0 ? `
+                                <div class="outfit-card-rating">
+                                    <span class="stars">${'&#9733;'.repeat(Math.round(post.average_rating))}${'&#9734;'.repeat(5 - Math.round(post.average_rating))}</span>
+                                    <span class="rating-num">${post.average_rating}</span>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="outfit-card-body">
+                            <h3 class="outfit-card-title">${post.title}</h3>
+                            <div class="outfit-card-meta">
+                                <span class="outfit-card-author">@${post.author}</span>
+                                <span class="outfit-card-date">${new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                            </div>
+                        </div>
+                    `;
+
+                    if (grid) {
+                        grid.prepend(card);
+                        requestAnimationFrame(() => card.classList.add('show'));
+                    }
+
+                    if (post.created_at > lastPostTime) {
+                        lastPostTime = post.created_at;
+                    }
+                    count++;
+                }
+
+                const feedCount = document.getElementById('feedCount');
+                if (feedCount) {
+                    const current = parseInt(feedCount.textContent) || 0;
+                    feedCount.textContent = `${current + count} looks`;
+                }
+
+                if (emptyState) emptyState.style.display = 'none';
+                if (banner) banner.style.display = 'none';
+            }
+        } catch (e) {
+            console.debug('Feed poll error (expected if idle):', e);
+        } finally {
+            isFetching = false;
+        }
+    }
+
+    let pollTimer;
+    function startPolling() {
+        pollTimer = setInterval(() => {
+            if (!document.hidden) fetchNewPosts();
+        }, pollInterval);
+    }
+    function stopPolling() { clearInterval(pollTimer); }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopPolling();
+        else startPolling();
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+        startPolling();
+    });
+
+    function scrollToTop() {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+</script>
+{% endblock %}
