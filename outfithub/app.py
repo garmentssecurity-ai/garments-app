@@ -1908,38 +1908,29 @@ def report_comment(comment_id):
 
 
 # ---------------------------------------------------------------------------
-# Create tables & run
+# Initialize database on startup (for production with gunicorn)
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
+def initialize_app():
+    """Create database tables and ensure upload directory exists."""
     with app.app_context():
         db.create_all()
         # Add new columns for existing databases (safe if columns already exist)
-        try:
-            with db.engine.connect() as conn:
-                conn.execute(db.text("ALTER TABLE users ADD COLUMN login_code VARCHAR(6)"))
-                conn.commit()
-        except Exception:
-            pass  # Column already exists
-        try:
-            with db.engine.connect() as conn:
-                conn.execute(db.text("ALTER TABLE users ADD COLUMN login_code_expiry DATETIME"))
-                conn.commit()
-        except Exception:
-            pass
-        try:
-            with db.engine.connect() as conn:
-                conn.execute(db.text("ALTER TABLE users ADD COLUMN reset_token VARCHAR(128)"))
-                conn.commit()
-        except Exception:
-            pass
-        try:
-            with db.engine.connect() as conn:
-                conn.execute(db.text("ALTER TABLE users ADD COLUMN reset_token_expiry DATETIME"))
-                conn.commit()
-        except Exception:
-            pass
-        # Ensure upload directory exists
+        for col in ["login_code", "login_code_expiry", "reset_token", "reset_token_expiry"]:
+            try:
+                with db.engine.connect() as conn:
+                    conn.execute(db.text(f"ALTER TABLE users ADD COLUMN {col} VARCHAR(128)"))
+                    conn.commit()
+            except Exception:
+                pass
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+initialize_app()
+
+# ---------------------------------------------------------------------------
+# Run (development only)
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
     print("garments running on http://localhost:5001")
     app.run(host="0.0.0.0", port=5001, debug=False)
