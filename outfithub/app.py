@@ -39,6 +39,7 @@ import dns.resolver
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Email, To, Content
 import hmac
+import urllib.parse
 
 # Load .env file
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -59,7 +60,17 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 if os.environ.get("SECRET_KEY", "") == "":
     print("⚠️  WARNING: Set SECRET_KEY in .env for proper security!")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "garments-dev-secret-key-change-in-prod")
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///garments.db"
+
+# Database: Use PostgreSQL if DATABASE_URL is set, otherwise SQLite
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+if DATABASE_URL:
+    # Render provides postgres:// but SQLAlchemy needs postgresql://
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+else:
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///garments.db"
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
@@ -69,18 +80,18 @@ login_manager = LoginManager(app)
 login_manager.login_view = "login"
 login_manager.remember_cookie_duration = timedelta(days=30)
 
-# ── Session: persistent login ──────────────────────────────────
+# ── Session: Instagram-level security ──────────────────────────
 app.config["SESSION_COOKIE_NAME"] = "garments_session"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = False  # Set True in prod with HTTPS
+app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
+app.config["SESSION_COOKIE_SECURE"] = True  # HTTPS only in production
 app.config["SESSION_PERMANENT"] = True
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=30)
 app.config["REMEMBER_COOKIE_NAME"] = "garments_remember"
 app.config["REMEMBER_COOKIE_HTTPONLY"] = True
-app.config["REMEMBER_COOKIE_SECURE"] = False  # Set True in prod with HTTPS
-app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
+app.config["REMEMBER_COOKIE_SECURE"] = True  # HTTPS only
+app.config["REMEMBER_COOKIE_SAMESITE"] = "Strict"
 
 # ── Google OAuth ────────────────────────────────────────────────
 oauth = OAuth(app)
@@ -312,6 +323,8 @@ class User(UserMixin, db.Model):
     login_code_expiry = db.Column(db.DateTime, nullable=True)     # When login code expires
     reset_token = db.Column(db.String(128), nullable=True)        # Password reset token
     reset_token_expiry = db.Column(db.DateTime, nullable=True)    # When reset token expires
+    failed_login_attempts = db.Column(db.Integer, default=0)       # Instagram: lockout after failed attempts
+    locked_until = db.Column(db.DateTime, nullable=True)           # Instagram: temporary lockout
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     posts = db.relationship("Post", backref="author", lazy="dynamic", cascade="all, delete-orphan")
@@ -325,6 +338,25 @@ class User(UserMixin, db.Model):
         if self.password_hash is None:
             return False
         return check_password_hash(self.password_hash, password)
+
+    def is_locked(self):
+        """Check if account is temporarily locked (Instagram-style)."""
+        if self.locked_until and datetime.utcnow() < self.locked_until:
+            return True
+        # Reset if lockout expired
+        if self.locked_until and datetime.utcnow() >= self.locked_until:
+            self.failed_login_attempts = 0
+            self.locked_until = None
+        return False
+
+    def record_failed_login(self):
+        """Instagram: progressive lockout - 5, 10, 30, 60 minutes."""
+        self.failed_login_attempts = (self.failed_login_attempts or 0) + 1
+        attempts = self.failed_login_attempts
+        if attempts >= 5:
+            lockout_minutes = min(60 * (attempts // 5), 480)  # up to 8 hours
+            self.locked_until = datetime.utcnow() + timedelta(minutes=lockout_minutes)
+        return self.failed_login_attempts
 
 
 class Post(db.Model):
@@ -856,6 +888,11 @@ def add_security_headers(response):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Remove Server header to hide version info
+    if "Server" in response.headers:
+        del response.headers["Server"]
     return response
 
 
@@ -997,9 +1034,26 @@ def login():
         user = User.query.filter_by(username=login_id).first()
         if user is None and "@" in login_id:
             user = User.query.filter_by(email=login_id).first()
-        if user is None or not user.check_password(password):
+        if user is None:
             flash("Invalid username or password.", "danger")
             return render_template("login.html", google_available=google_available)
+
+        # Instagram: check account lockout
+        if user.is_locked():
+            remaining = (user.locked_until - datetime.utcnow()).seconds // 60
+            flash(f"Account temporarily locked. Try again in {remaining} minutes.", "danger")
+            return render_template("login.html", google_available=google_available)
+
+        if not user.check_password(password):
+            user.record_failed_login()
+            db.session.commit()
+            flash("Invalid username or password.", "danger")
+            return render_template("login.html", google_available=google_available)
+
+        # Reset failed attempts on successful login
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        db.session.commit()
 
         # Block login if email not confirmed (skip for OAuth users)
         if not user.email_confirmed and not user.oauth_provider:
@@ -1936,10 +1990,12 @@ def initialize_app():
     with app.app_context():
         db.create_all()
         # Add new columns for existing databases (safe if columns already exist)
-        for col in ["login_code", "login_code_expiry", "reset_token", "reset_token_expiry"]:
+        for col in ["login_code", "login_code_expiry", "reset_token", "reset_token_expiry",
+                     "failed_login_attempts", "locked_until"]:
             try:
                 with db.engine.connect() as conn:
-                    conn.execute(db.text(f"ALTER TABLE users ADD COLUMN {col} VARCHAR(128)"))
+                    col_type = "INTEGER" if col in ["failed_login_attempts"] else "DATETIME" if col in ["locked_until"] else "VARCHAR(128)"
+                    conn.execute(db.text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
                     conn.commit()
             except Exception:
                 pass
